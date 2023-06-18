@@ -1,9 +1,14 @@
 ﻿using AI.Dev.OpenAI.GPT;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Spectre.Console;
+using System;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace ChatCmd
 {
@@ -19,6 +24,13 @@ namespace ChatCmd
                 .Build();
 
             var apiKey = config.GetSection("apiKey").Value;
+
+            var collection = new ServiceCollection();
+            ConfigureServices(collection);
+            var serviceProvider = collection.BuildServiceProvider();
+            
+            var functions = GetFunctions(serviceProvider);
+            var functionsJsonSchema = JsonConvert.SerializeObject(functions, Formatting.Indented);
 
             using var httpClient = new HttpClient();
             httpClient.BaseAddress = new Uri("https://api.openai.com");
@@ -109,6 +121,35 @@ namespace ChatCmd
             var text = string.Join(Environment.NewLine, lines);
 
             return text;
+        }
+
+        private static void ConfigureServices(IServiceCollection collection)
+        {
+            // Get the current assembly.
+            Assembly assembly = Assembly.GetExecutingAssembly();
+
+            // Find all types that implement IChatPlug.
+            var chatPlugTinypes = assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract && t.GetInterfaces().Contains(typeof(IChatPlugin)));
+
+            // Register them with the service collection.
+            foreach (var type in chatPlugTinypes)
+            {
+                collection.AddScoped(typeof(IChatPlugin),type);                
+            }
+        }
+
+        private static List<ChatFunctionDescriptor> GetFunctions(ServiceProvider serviceProvider)
+        {
+            List<ChatFunctionDescriptor> functions = new List<ChatFunctionDescriptor>();
+
+            var chatPlugins = serviceProvider.GetServices<IChatPlugin>();
+
+            foreach (var plugin in chatPlugins)
+            {
+                functions.AddRange(plugin.GetFunctions());
+            }
+
+            return functions;
         }
     }
 }
