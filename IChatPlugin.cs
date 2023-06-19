@@ -9,6 +9,6 @@ namespace ChatCmd
     interface IChatPlugin
     {
         List<ChatFunctionDescriptor> GetFunctions();
-        string ExecuteFunction(string function);
+        object ExecuteFunction(string function, string arguments);
     }
 }

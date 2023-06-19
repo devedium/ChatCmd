@@ -3,8 +3,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 using Spectre.Console;
 using System;
+using System.Linq;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text;
@@ -30,7 +32,11 @@ namespace ChatCmd
             var serviceProvider = collection.BuildServiceProvider();
             
             var functions = GetFunctions(serviceProvider);
-            var functionsJsonSchema = JsonConvert.SerializeObject(functions, Formatting.Indented);
+            var functionsJsonSchema = JsonConvert.SerializeObject(functions, new JsonSerializerSettings()
+            {
+                 Formatting = Formatting.Indented,
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
 
             using var httpClient = new HttpClient();
             httpClient.BaseAddress = new Uri("https://api.openai.com");
@@ -46,26 +52,35 @@ namespace ChatCmd
                 }
             };
 
-            int maxResponseTokens = 250;
+            int maxResponseTokens = 1024;
             int tokenLimit = 1024 * 16;
+
+            var functionsJArray = JArray.Parse(functionsJsonSchema);
 
             JObject input = new JObject
             {
                 ["model"] = "gpt-3.5-turbo-0613",
                 ["messages"] = conversation,
-                ["max_tokens"] = maxResponseTokens
+                ["max_tokens"] = maxResponseTokens,
+                ["functions"] = functionsJArray,
             };
 
+            tokenLimit -= GetFunctionsTokenNum(functionsJArray);
+
+            bool functionCalling = false;
 
             while (true)
-            {                
-                string userInput = ReadCommand();
-
-                conversation.Add(new JObject
+            {
+                if (!functionCalling)
                 {
-                    ["role"] = "user",
-                    ["content"] = userInput
-                });
+                    string userInput = ReadCommand();
+
+                    conversation.Add(new JObject
+                    {
+                        ["role"] = "user",
+                        ["content"] = userInput
+                    });
+                }
 
                 var tokenNum = GetConversationTokenNum(conversation);
                 while (tokenNum + maxResponseTokens > tokenLimit)
@@ -85,20 +100,47 @@ namespace ChatCmd
 
                 string responseContent = await response.Content.ReadAsStringAsync();
                 JObject jsonResponse = JObject.Parse(responseContent);
-                var responseMessage = jsonResponse["choices"][0]["message"]["content"].ToString();
-                Console.WriteLine(responseMessage);
-                Console.WriteLine();
-                conversation.Add(new JObject
+
+                if (jsonResponse["choices"][0]["finish_reason"].ToString() == "function_call")
                 {
-                    ["role"] = "assistant",
-                    ["content"] = responseMessage
-                });
-                if (jsonResponse["choices"][0]["finish_reason"].ToString() == "length")
+                    var functionCall = jsonResponse["choices"][0]["message"]["function_call"];
+                    var result = CallFunction(serviceProvider, functionCall);
+                    if (result != null)
+                    {
+                        conversation.Add(new JObject
+                        {
+                            ["role"] = "function",
+                            ["name"] = functionCall["name"].ToString(),
+                            ["content"] = JsonConvert.SerializeObject(result)
+                        });
+                        functionCalling = true;
+                    }
+                }
+                else
                 {
-                    Console.WriteLine("[...]");
+                    var responseMessage = jsonResponse["choices"][0]["message"]["content"].ToString();
+                    Console.WriteLine(responseMessage);
                     Console.WriteLine();
+                    conversation.Add(new JObject
+                    {
+                        ["role"] = "assistant",
+                        ["content"] = responseMessage
+                    });
+                    if (jsonResponse["choices"][0]["finish_reason"].ToString() == "length")
+                    {
+                        Console.WriteLine("[...]");
+                        Console.WriteLine();
+                    }
+                    functionCalling = false;
                 }
             }
+        }
+
+        static int GetFunctionsTokenNum(JArray functions)
+        {
+            int num = 0;
+            num = functions.Sum(m => GPT3Tokenizer.Encode(m["name"].ToString()).Count + GPT3Tokenizer.Encode(m["description"].ToString()).Count + GPT3Tokenizer.Encode(m["parameters"].ToString()).Count + 6);
+            return num + 2;
         }
 
         static int GetConversationTokenNum(JArray conversation)
@@ -150,6 +192,22 @@ namespace ChatCmd
             }
 
             return functions;
+        }
+
+        private static object CallFunction(ServiceProvider serviceProvider, JToken functionCall)
+        {            
+            string[] parts = functionCall["name"].ToString().Split('-');
+
+            var chatPlugins = serviceProvider.GetServices<IChatPlugin>();
+            var chatPlugin = chatPlugins.Where(plugin => plugin.GetType().Name.Equals(parts[0])).FirstOrDefault();
+            if (chatPlugin != null)
+            {
+                return chatPlugin.ExecuteFunction(parts[1], functionCall["arguments"].ToString());
+            }
+            else
+            {
+                return null;
+            }            
         }
     }
 }

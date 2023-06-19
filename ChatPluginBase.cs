@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -41,9 +42,18 @@ namespace ChatCmd
             return functions;
         }
 
-        public virtual string ExecuteFunction(string function)
+        public virtual object ExecuteFunction(string function, string arguments)
         {
-            throw new NotImplementedException();
+            var args =  JObject.Parse(arguments);
+            Dictionary<string, object> parameters = args.ToObject<Dictionary<string, object>>();
+
+            Type type = this.GetType();
+            MethodInfo methodInfo = type.GetMethod(function);
+            ParameterInfo[] methodParameters = methodInfo.GetParameters();
+            object[] parametersArray = methodParameters.Select(p => parameters[p.Name]).ToArray();
+
+            object result = methodInfo?.Invoke(this, parametersArray);
+            return result;
         }
 
         private JSchema CreateJsonSchemaForParameters(MethodInfo method)
