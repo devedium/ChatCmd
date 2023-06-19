@@ -21,7 +21,7 @@ namespace ChatCmd
             return;
         }
 
-        [ChatFunction(description: "Delete the file, return true if it succeeded.")]
+        [ChatFunction(description: "Delete the file")]
         public void DeleteFile([ChatFunctionParameter(description: "The name of the file to be deleted")] string path)
         {
             File.Delete(path);
