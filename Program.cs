@@ -5,12 +5,9 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using Spectre.Console;
-using System;
-using System.Linq;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace ChatCmd
 {

@@ -18,14 +18,12 @@ namespace ChatCmd
         public void WriteTextFile([ChatFunctionParameter(description: "The file to write to")] string path, [ChatFunctionParameter(description: "The string to write to the file")] string contents)
         {
             File.WriteAllText(path, contents);
-            return;
         }
 
         [ChatFunction(description: "Delete the file")]
         public void DeleteFile([ChatFunctionParameter(description: "The name of the file to be deleted")] string path)
         {
             File.Delete(path);
-            return;
         }
     }
 }

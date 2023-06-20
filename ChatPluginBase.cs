@@ -118,8 +118,5 @@ namespace ChatCmd
 
             throw new ArgumentException("Unsupported type: " + type.FullName);
         }
-
-
     }
-
 }
