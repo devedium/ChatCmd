@@ -115,6 +115,16 @@ namespace ChatCmd
                         });
                         functionCalling = true;
                     }
+                    else 
+                    {
+                        functionCalling = false;
+                    }
+                    var responseMessage = jsonResponse["choices"][0]["message"]["content"].ToString();
+                    if (!string.IsNullOrEmpty(responseMessage))
+                    {
+                        Console.WriteLine(responseMessage);
+                        Console.WriteLine();
+                    }
                 }
                 else
                 {
